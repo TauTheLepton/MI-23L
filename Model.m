@@ -1,7 +1,5 @@
-classdef Model
-    %MODEL Summary of this class goes here
-    %   Detailed explanation goes here
-    
+classdef Model < handle
+
     properties
         poly
         ranges
@@ -12,9 +10,9 @@ classdef Model
         function obj = Model(data,r)
             switch nargin
                 case 2
-                    obj = obj.read_data(data,r);
+                    obj.read_data(data,r);
                 case 1
-                    obj = obj.read_data(data,obj.make_ranges(data));
+                    obj.read_data(data,obj.make_ranges(data));
                 otherwise
                     throw(MException('Model:WrongNumberOfArguments', ...
                         'Wrong number of arguments! Must be either 1 or 2.'))
@@ -28,7 +26,7 @@ classdef Model
             r = [r, 100:100:max(data.CALKOWITA_ODLEGLOSC)+100];
         end
         
-        function obj = read_data(obj,data,r)
+        function read_data(obj,data,r)
             for i=1:max(size(r))-1
                 obj.ranges{i} = struct('min', r(i), 'max', r(i+1));
                 obj.data{i} = data( ...
@@ -37,7 +35,7 @@ classdef Model
             end
         end
 
-        function obj = fit(obj,degree)
+        function fit(obj,degree)
             for i=1:max(size(obj.ranges))
                 obj.poly{i} = polyfit( ...
                     obj.data{i}.CALKOWITA_ODLEGLOSC, ...
