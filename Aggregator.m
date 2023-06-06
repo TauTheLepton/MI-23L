@@ -9,25 +9,50 @@ classdef Aggregator < handle
     end
     
     methods
-        function obj = Aggregator(data,r,min_cluster_size,poly_deg)
-            obj.data = data;
-            % make general model for all data
-            obj.model_general = Model(data,r);
-            obj.model_general.fit(poly_deg);
-            % make model for just the uk data
-            obj.model_brexit = Model( ...
-                data(data.DLUGOSC_ZALADUNKU < 2 & data.SZEROKOSC_ZALADUNKU > 50,:),r);
-            obj.model_brexit.fit(poly_deg);
-            % make dedicated models for all clusters
-            cluster_data = divide_cluster(data,min_cluster_size);
-            obj.models = cell(size(cluster_data));
-            obj.models_cluster = cell(size(cluster_data));
-            for idx=1:max(size(cluster_data))
-                obj.models{idx} = Model(cluster_data{idx},r);
-                obj.models{idx}.fit(poly_deg);
-                obj.models_cluster{idx} = cluster_data{idx}.KLASTER(1);
+        function obj = Aggregator(data,min_cluster_size,poly_deg,r)
+            switch nargin
+                case 3
+                    obj.data = data;
+                    % make general model for all data
+                    obj.model_general = Model(data);
+                    obj.model_general.fit(poly_deg);
+                    % make model for just the uk data
+                    obj.model_brexit = Model(data(data.DLUGOSC_ZALADUNKU < 2 & data.SZEROKOSC_ZALADUNKU > 50,:));
+                    obj.model_brexit.fit(poly_deg);
+                    % make dedicated models for all clusters
+                    cluster_data = divide_cluster(data,min_cluster_size);
+                    obj.models = cell(size(cluster_data));
+                    obj.models_cluster = cell(size(cluster_data));
+                    for idx=1:max(size(cluster_data))
+                        obj.models{idx} = Model(cluster_data{idx});
+                        obj.models{idx}.fit(poly_deg);
+                        obj.models_cluster{idx} = cluster_data{idx}.KLASTER(1);
+                    end
+                    obj.models_cluster
+                case 4
+                    obj.data = data;
+                    % make general model for all data
+                    obj.model_general = Model(data, r);
+                    obj.model_general.fit(poly_deg);
+                    % make model for just the uk data
+                    obj.model_brexit = Model( ...
+                        data(data.DLUGOSC_ZALADUNKU < 2 & data.SZEROKOSC_ZALADUNKU > 50,:),r);
+                    obj.model_brexit.fit(poly_deg);
+                    % make dedicated models for all clusters
+                    cluster_data = divide_cluster(data,min_cluster_size);
+                    obj.models = cell(size(cluster_data));
+                    obj.models_cluster = cell(size(cluster_data));
+                    for idx=1:max(size(cluster_data))
+                        obj.models{idx} = Model(cluster_data{idx}, r);
+                        obj.models{idx}.fit(poly_deg);
+                        obj.models_cluster{idx} = cluster_data{idx}.KLASTER(1);
+                    end
+                    obj.models_cluster
+                otherwise
+                    throw(MException('Model:WrongNumberOfArguments', ...
+                        'Wrong number of arguments! Must be either 1 or 2.'))
             end
-            obj.models_cluster
+            
         end
         
         function result = predict(obj,test_data)

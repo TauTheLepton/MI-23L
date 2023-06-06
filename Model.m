@@ -20,10 +20,14 @@ classdef Model < handle
         end
 
         function r = make_ranges(obj,data)
-%             FIXME make something that makes sense
-            r = min(data.CALKOWITA_ODLEGLOSC):15:50-15;
-            r = [r, 50:50:100-50];
-            r = [r, 100:100:max(data.CALKOWITA_ODLEGLOSC)+100];
+            dat = rmoutliers([data.CALKOWITA_ODLEGLOSC, data.KOSZT]);
+            x=dat(:,1);
+            y=dat(:,2);
+            Lv = ischange(y, 'linear', 'MaxNumChanges',10);
+            Idx = [1 find(Lv)', numel(y)];
+            rang = x(Idx(:));
+            rang = sort(rang);
+            r = [1 rang' max(data.CALKOWITA_ODLEGLOSC)+1];
         end
         
         function read_data(obj,data,r)
@@ -45,7 +49,7 @@ classdef Model < handle
 
         function result = predict(obj,val)
             i = 1;
-            while val < obj.ranges{i}.min || val >= obj.ranges{i}.max
+            while i < size(obj.ranges,2) && (val < obj.ranges{i}.min || val >= obj.ranges{i}.max)
                 i = i+1;
                 continue
             end
