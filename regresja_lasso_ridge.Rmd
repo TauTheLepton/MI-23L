@@ -1,0 +1,306 @@
+# Packages import
+
+```{r, echo=TRUE,warning=FALSE,message=FALSE,error=FALSE, results='hide',fig.keep='all'}
+library(dplyr)
+library(caret)
+#library(verification)
+#library(nnet)
+library(janitor)
+library(nortest)
+library(caTools)
+library(glmnet)
+```
+
+# Data import
+
+```{r}
+getwd()
+df = read.csv(file = "train_set_filtered.csv", sep = ",", header = TRUE)
+testdf = read.csv(file = "test_set_filtered.csv", sep = ",", header = TRUE)
+```
+
+# Zmienne
+Wybrane zmienne zostały
+
+```{r}
+hist(df$KOSZT, main="Histogram kosztu")
+df <- df %>% mutate(l_price = log(df$KOSZT))
+hist(df$l_price, main="Histogram logarytmu z kosztu")
+#logarytmizujemy żeby model się lepiej zachowywał
+```
+
+The QQ chart shows that the top quartile is not exactly what should be in the normal distribution.
+
+```{r}
+qqnorm(df$l_price)
+qqline(df$l_price, col = "red")
+```
+
+Nonparametric Kolmogorov-Smirnov test gives grounds to reject the hypothesis of a normal distribution. On the other hand, this test is quite sensitive to outliers and probably their presence causes the test to give grounds for rejecting the null hypothesis that the distribution of the variable is normal.
+```{r}
+nortest::lillie.test(df$l_price)
+```
+
+### Calkowita odleglosc
+
+```{r}
+summary(df$CALKOWITA_ODLEGLOSC)
+hist(df$CALKOWITA_ODLEGLOSC, main="Histogram for distance")
+df <- df %>% mutate(log_dist = log(df$CALKOWITA_ODLEGLOSC))
+hist(df$log_dist, main="Histogram ln(price)")
+#log też wygląda lepiej niż bez log
+```
+
+### Liczba zaladunkow i rozladunkow
+Przerobiona na poziomy 1 i >1, ponieważ za mało jest próbek >1
+
+```{r}
+#zmienna dyskretna, 1 vs > 1
+
+df$LICZBA_ZALADUNKOW <- factor(df$LICZBA_ZALADUNKOW,
+                      levels = c(1, 2, 3),
+                      ordered = TRUE)
+
+df$LICZBA_ZALADUNKOW[df$LICZBA_ZALADUNKOW == 1] <- 1
+df$LICZBA_ZALADUNKOW[df$LICZBA_ZALADUNKOW != 1] <- 2
+df$LICZBA_ZALADUNKOW[is.na(df$LICZBA_ZALADUNKOW)] <- 2
+
+df$LICZBA_ZALADUNKOW <- droplevels(df$LICZBA_ZALADUNKOW)
+
+
+testdf$LICZBA_ZALADUNKOW <- factor(testdf$LICZBA_ZALADUNKOW,
+                      levels = c(1, 2, 3),
+                      ordered = TRUE)
+
+testdf$LICZBA_ZALADUNKOW[testdf$LICZBA_ZALADUNKOW == 1] <- 1
+testdf$LICZBA_ZALADUNKOW[testdf$LICZBA_ZALADUNKOW != 1] <- 2
+testdf$LICZBA_ZALADUNKOW[is.na(testdf$LICZBA_ZALADUNKOW)] <- 2
+
+testdf$LICZBA_ZALADUNKOW <- droplevels(testdf$LICZBA_ZALADUNKOW)
+
+summary(df$LICZBA_ZALADUNKOW)
+```
+```{r}
+#zmienna dyskretna, 1 vs > 1
+
+df$LICZBA_ROZLADUNKOW <- factor(df$LICZBA_ROZLADUNKOW,
+                      levels = c(1, 2, 3, 4, 5, 6, 8),
+                      ordered = TRUE)
+
+df$LICZBA_ROZLADUNKOW[df$LICZBA_ROZLADUNKOW == 1] <- 1
+df$LICZBA_ROZLADUNKOW[df$LICZBA_ROZLADUNKOW != 1] <- 2
+df$LICZBA_ROZLADUNKOW[is.na(df$LICZBA_ROZLADUNKOW)] <- 2
+
+df$LICZBA_ROZLADUNKOW <- droplevels(df$LICZBA_ROZLADUNKOW)
+
+
+
+testdf$LICZBA_ROZLADUNKOW <- factor(testdf$LICZBA_ROZLADUNKOW,
+                      levels = c(1, 2, 3, 4, 5, 6, 8),
+                      ordered = TRUE)
+
+testdf$LICZBA_ROZLADUNKOW[testdf$LICZBA_ROZLADUNKOW == 1] <- 1
+testdf$LICZBA_ROZLADUNKOW[testdf$LICZBA_ROZLADUNKOW != 1] <- 2
+testdf$LICZBA_ROZLADUNKOW[is.na(testdf$LICZBA_ROZLADUNKOW)] <- 2
+
+testdf$LICZBA_ROZLADUNKOW <- droplevels(testdf$LICZBA_ROZLADUNKOW)
+
+summary(df$LICZBA_ROZLADUNKOW)
+```
+
+### Czas transportu
+
+```{r}
+hist(df$MAX_CZAS_TRANSPORTU, main="Histogram for time")
+df <- df %>% mutate(l_czas = log(df$MAX_CZAS_TRANSPORTU))
+hist(df$l_czas, main="Histogram for ln_CZAS")
+tabyl(df, MAX_CZAS_TRANSPORTU)
+#zlogarytmizowanie usuwa nam outliery ktore są <=0
+```
+
+Yet Kolmogorov-Smirnov test gives grounds for rejecting the null hypothesis.
+
+```{r}
+nortest::lillie.test(df$CALKOWITA_ODLEGLOSC)
+```
+
+Variables identified as discrete have been decoded into binary variables. Since some groups of observations were small in the sample, I combined them with other groups to avoid the problem of irrelevance.
+
+```{r}
+options(contrasts = c("contr.treatment", "contr.treatment"))
+```
+
+
+# Model estimation
+
+Division into a training and a test group (70:30)
+
+```{r}
+train_set = df # subset(df, data1 == TRUE)
+test_set = testdf # subset(df,data1==FALSE)
+```
+
+Cross validation
+
+```{r}
+train.control <- trainControl(method = "cv", number = 10)
+```
+
+### Linear regression
+
+
+```{r}
+# linear model estimation
+
+model2 <- train(KOSZT ~ TERMIN_PLATNOSCI + CZY_CHLODNIA + MIN_CZAS_TRANSPORTU + MAX_CZAS_TRANSPORTU + LICZBA_ZALADUNKOW + LICZBA_ROZLADUNKOW + CALKOWITA_ODLEGLOSC + MAX_WAGA + TONOKILOMETRY + ODLEGLOSC_NA_PUSTO + CENA_PALIWA + ODSTEP_CZASOWY + ILE_DNI_TEMU + CZAS_REALIZACJI + SZEROKOSC_ZALADUNKU + SZEROKOSC_ROZLADUNKU + DLUGOSC_ROZLADUNKU , data = train_set, method = "lm",
+                trControl = train.control,
+                na.action = na.exclude)
+
+# estimation result
+summary(model2)
+
+# predicted values
+predicted_linear <- predict(model2)
+```
+
+Ggplot charts for both distribution of errors and real values against the predicted pointing to a good model fit to data.
+
+```{r}
+# distribution of errors
+ggplot(data.frame(error = train_set$l_price - predicted_linear),
+       aes(x = error)) +
+  geom_histogram(fill = "blue",
+                 bins = 100) +
+  theme_bw()
+
+# real values against the predicted
+```
+
+Function which will help to evaluate the fit of the model to the data.
+
+```{r}
+regressionMetrics <- function(real, predicted) {
+  # Mean Square Error
+  MSE <- mean((real - predicted)^2)
+  # Root Mean Square Error
+  RMSE <- sqrt(MSE)
+  # Mean Absolute Error
+  MAE <- mean(abs(real - predicted))
+  # Mean Absolute Percentage Error
+  MAPE <- mean(abs(real - predicted)/real)
+  # Median Absolute Error
+  MedAE <- median(abs(real - predicted))
+  # Mean Logarithmic Absolute Error
+  MSLE <- mean((log(1 + real) - log(1 + predicted))^2)
+  # Total Sum of Squares
+  TSS <- sum((real - mean(real))^2)
+  # Explained Sum of Squares
+  RSS <- sum((predicted - real)^2)
+  # R2
+  R2 <- 1 - RSS/TSS
+  
+  result <- data.frame(MSE, RMSE, MAE, MAPE, MedAE, MSLE, R2)
+  return(result)
+}
+```
+
+Metrics for a linear model.
+
+```{r}
+regressionMetrics(real = test_set$KOSZT,
+                  predicted = predict(model2, 
+                                      test_set)
+)
+```
+
+### Ridge model 
+
+Cross validation and lambda parameters.
+
+```{r}
+ctrl_cv5 <- trainControl(method = "cv", number = 5)
+
+lambdas <- exp(log(10)*seq(-2, 9, length.out = 200))
+```
+
+Data frame preparation and model estimation.
+
+```{r, echo=TRUE,warning=FALSE,message=FALSE,error=FALSE, results='hide',fig.keep='all'}
+parameters_ridge <- expand.grid(alpha = 0,
+                                lambda = lambdas)
+
+all_variables <- c('KOSZT', 'TERMIN_PLATNOSCI', 'CZY_CHLODNIA', 'MIN_CZAS_TRANSPORTU', 'MAX_CZAS_TRANSPORTU', 'LICZBA_ZALADUNKOW', 'LICZBA_ROZLADUNKOW',
+                          'CALKOWITA_ODLEGLOSC', 'MAX_WAGA', 'TONOKILOMETRY', 'ODLEGLOSC_NA_PUSTO', 'CENA_PALIWA', 'ODSTEP_CZASOWY', 'ILE_DNI_TEMU', 'CZAS_REALIZACJI', 'SZEROKOSC_ZALADUNKU', 'DLUGOSC_ZALADUNKU', 'SZEROKOSC_ROZLADUNKU', 'SZEROKOSC_ROZLADUNKU')
+
+ridge_model <- train(KOSZT ~ .,
+                      data = train_set %>% 
+                        dplyr::select(all_of(all_variables)),
+                      method = "glmnet", 
+                      tuneGrid = parameters_ridge,
+                      trControl = ctrl_cv5,
+                      na.action = na.exclude)
+
+plot(ridge_model)
+```
+
+The best lambda and model prediction.
+
+```{r}
+ridge_model$bestTune$lambda
+
+predict(ridge_model$finalModel,
+        s = ridge_model$bestTune$lambda,
+        type = "coefficients")
+```
+
+Metrics for the ridge model.
+
+```{r}
+regressionMetrics(real = test_set$KOSZT,
+                  predicted = predict(ridge_model, 
+                                      test_set)
+)
+```
+
+### LASSO model
+
+Model estimation.
+
+```{r, echo=TRUE,warning=FALSE,message=FALSE,error=FALSE, results='hide',fig.keep='all'}
+parameters_lasso <- expand.grid(alpha = 1,
+                                lambda = lambdas)
+
+lasso_model <-  train(KOSZT ~ .,
+                       data = train_set %>% 
+                       dplyr::select(all_of(all_variables)),
+                       method = "glmnet", 
+                       tuneGrid = parameters_lasso,
+                       trControl = ctrl_cv5,
+                       na.action = na.exclude)
+
+plot(lasso_model)
+```
+
+The best lambda and model prediction.
+
+```{r}
+lasso_model$bestTune$lambda
+
+predict(lasso_model$finalModel,
+        s = lasso_model$bestTune$lambda,
+        type = "coefficients")
+```
+
+Metrics for the LASSO model.
+
+```{r}
+regressionMetrics(real = test_set$KOSZT,
+                  predicted = predict(lasso_model, 
+                                      test_set)
+)
+```
+
+### Conclusions
+
+To sum up, the best results were achieved by linear regression (lowest errors and highest R ^ 2), followed by the ridge model and the third by LASSO (highest errors and lowest  R ^ 2).
+However, looking at these metrics, they give a similar fit to the data.
